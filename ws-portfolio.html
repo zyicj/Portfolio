@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WS 资产追踪</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #07070e;
+  --s1: #10101a;
+  --s2: #181824;
+  --border: #252535;
+  --green: #00d68f;
+  --red: #ff4757;
+  --gold: #ffd32a;
+  --blue: #00b4d8;
+  --zhou: #00d68f;
+  --jie: #a78bfa;
+  --text: #e2e2f0;
+  --t2: #7878a0;
+  --t3: #404058;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Noto Sans SC', sans-serif;
+  font-weight: 300;
+  min-height: 100vh;
+}
+body::after {
+  content:'';
+  position:fixed;
+  inset:0;
+  background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0,214,143,0.06), transparent);
+  pointer-events:none;
+  z-index:0;
+}
+
+.wrap { max-width:1100px; margin:0 auto; padding:28px 16px; position:relative; z-index:1; }
+
+/* ── Header ── */
+.hdr { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:28px; flex-wrap:wrap; gap:12px; }
+.hdr h1 { font-size:clamp(18px,4vw,26px); font-weight:400; letter-spacing:.06em; }
+.hdr .sub { font-family:'DM Mono',monospace; font-size:10px; color:var(--t3); margin-top:3px; letter-spacing:.12em; }
+.refresh-btn {
+  display:flex; align-items:center; gap:8px;
+  background:var(--s1); border:1px solid var(--border);
+  color:var(--green); padding:9px 18px; border-radius:6px;
+  cursor:pointer; font-family:'DM Mono',monospace; font-size:12px;
+  transition:all .2s;
+}
+.refresh-btn:hover { background:var(--green); color:#000; border-color:var(--green); }
+.refresh-btn.loading { opacity:.6; pointer-events:none; }
+.spin { display:inline-block; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ── Summary strip ── */
+.strip {
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px,1fr));
+  gap:10px; margin-bottom:24px;
+}
+.card {
+  background:var(--s1); border:1px solid var(--border);
+  border-radius:8px; padding:14px 16px;
+  border-top:2px solid var(--card-accent, var(--t3));
+}
+.card .lbl { font-family:'DM Mono',monospace; font-size:9px; color:var(--t3); letter-spacing:.12em; margin-bottom:6px; }
+.card .val { font-family:'DM Mono',monospace; font-size:clamp(16px,2.5vw,22px); font-weight:500; }
+.card .chg { font-family:'DM Mono',monospace; font-size:11px; margin-top:3px; }
+
+/* ── Tabs ── */
+.tabs { display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+.tab {
+  padding:7px 18px; border-radius:5px; border:1px solid var(--border);
+  background:var(--s1); color:var(--t2); cursor:pointer;
+  font-size:13px; transition:all .15s;
+}
+.tab[data-t="ALL"]:hover,.tab[data-t="ALL"].on { --c:var(--t2); border-color:var(--t2); color:var(--t2); }
+.tab[data-t="ZHOU"]:hover,.tab[data-t="ZHOU"].on { border-color:var(--zhou); color:var(--zhou); }
+.tab[data-t="JIE"]:hover,.tab[data-t="JIE"].on  { border-color:var(--jie);  color:var(--jie);  }
+.tab.on { font-weight:500; }
+
+/* ── Period selector ── */
+.periods { display:flex; gap:6px; margin-bottom:18px; align-items:center; }
+.periods span { font-size:11px; color:var(--t3); font-family:'DM Mono',monospace; margin-right:4px; }
+.pb {
+  padding:5px 12px; border-radius:4px; border:1px solid var(--border);
+  background:transparent; color:var(--t3); cursor:pointer;
+  font-family:'DM Mono',monospace; font-size:11px; transition:all .15s;
+}
+.pb:hover { color:var(--text); }
+.pb.on { border-color:var(--green); color:var(--green); background:rgba(0,214,143,.08); }
+
+/* ── Holdings table ── */
+.box { background:var(--s1); border:1px solid var(--border); border-radius:10px; overflow:hidden; margin-bottom:18px; }
+.box-hdr {
+  padding:13px 18px; border-bottom:1px solid var(--border);
+  display:flex; justify-content:space-between; align-items:center;
+}
+.box-hdr span { font-size:12px; color:var(--t2); letter-spacing:.06em; font-weight:500; }
+.add-btn {
+  background:transparent; border:1px solid var(--green); color:var(--green);
+  padding:5px 14px; border-radius:4px; cursor:pointer;
+  font-family:'DM Mono',monospace; font-size:11px; transition:all .15s;
+}
+.add-btn:hover { background:var(--green); color:#000; }
+
+table { width:100%; border-collapse:collapse; }
+th {
+  padding:9px 14px; text-align:left;
+  font-family:'DM Mono',monospace; font-size:9px; color:var(--t3);
+  letter-spacing:.1em; border-bottom:1px solid var(--border);
+}
+th:not(:first-child) { text-align:right; }
+td { padding:11px 14px; font-size:13px; border-bottom:1px solid rgba(37,37,53,.6); vertical-align:middle; }
+td:not(:first-child) { text-align:right; font-family:'DM Mono',monospace; }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:rgba(255,255,255,.015); }
+
+.tkr { font-family:'DM Mono',monospace; font-weight:500; font-size:14px; }
+.tname { font-size:10px; color:var(--t3); margin-top:2px; }
+.badge {
+  display:inline-block; padding:1px 5px; border-radius:3px;
+  font-size:9px; font-family:'DM Mono',monospace; margin-left:5px; vertical-align:middle;
+}
+.bZHOU { background:rgba(0,214,143,.12); color:var(--zhou); }
+.bJIE  { background:rgba(167,139,250,.12); color:var(--jie); }
+.bTFSA { background:rgba(0,180,216,.1); color:var(--blue); font-size:8px; }
+.bNR   { background:rgba(255,215,42,.08); color:var(--gold); font-size:8px; }
+
+.ei {
+  background:transparent; border:none; border-bottom:1px solid var(--border);
+  color:var(--text); font-family:'DM Mono',monospace; font-size:12px;
+  text-align:right; width:80px; padding:2px 4px;
+}
+.ei:focus { outline:none; border-bottom-color:var(--green); }
+
+.pos { color:var(--green); }
+.neg { color:var(--red); }
+.neu { color:var(--t2); }
+.delbtn {
+  background:none; border:none; color:var(--t3); cursor:pointer;
+  font-size:13px; padding:2px 6px; border-radius:3px; transition:all .15s;
+}
+.delbtn:hover { color:var(--red); background:rgba(255,71,87,.1); }
+
+/* ── Snapshot grid ── */
+.snap-grid { display:grid; grid-template-columns:repeat(4,1fr); }
+@media(max-width:580px){ .snap-grid { grid-template-columns:repeat(2,1fr); } }
+.sc {
+  padding:18px 14px; border-right:1px solid var(--border);
+  border-bottom:1px solid var(--border); text-align:center;
+}
+.sc:nth-child(4n),.sc:last-child { border-right:none; }
+@media(max-width:580px){ .sc:nth-child(2n) { border-right:none; } }
+.sp { font-family:'DM Mono',monospace; font-size:9px; color:var(--t3); letter-spacing:.1em; margin-bottom:7px; }
+.sv { font-family:'DM Mono',monospace; font-size:clamp(14px,2.5vw,20px); font-weight:500; margin-bottom:3px; }
+.spct { font-family:'DM Mono',monospace; font-size:11px; }
+
+.rec-bar {
+  padding:12px 18px; border-top:1px solid var(--border);
+  display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+}
+.rec-btn {
+  background:var(--green); color:#000; border:none;
+  padding:8px 18px; border-radius:5px; cursor:pointer;
+  font-family:'DM Mono',monospace; font-size:12px; font-weight:500;
+  transition:opacity .15s;
+}
+.rec-btn:hover { opacity:.85; }
+.rec-note { font-size:11px; color:var(--t3); }
+
+/* ── Prices strip ── */
+.prices-bar {
+  background:var(--s1); border:1px solid var(--border); border-radius:8px;
+  padding:10px 16px; margin-bottom:20px;
+  display:flex; gap:20px; flex-wrap:wrap; align-items:center;
+}
+.price-item { text-align:center; }
+.price-item .pi-tkr { font-family:'DM Mono',monospace; font-size:10px; color:var(--t3); }
+.price-item .pi-val { font-family:'DM Mono',monospace; font-size:14px; font-weight:500; color:var(--text); }
+.price-item .pi-chg { font-family:'DM Mono',monospace; font-size:10px; }
+.price-ts { font-family:'DM Mono',monospace; font-size:9px; color:var(--t3); margin-left:auto; }
+
+.empty { padding:36px; text-align:center; color:var(--t3); font-size:13px; }
+
+/* ── Modal ── */
+.ov { display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:200; align-items:center; justify-content:center; }
+.ov.show { display:flex; }
+.modal { background:var(--s1); border:1px solid var(--border); border-radius:12px; padding:24px; width:90%; max-width:400px; }
+.modal h3 { font-size:15px; font-weight:400; margin-bottom:18px; }
+.fr { margin-bottom:13px; }
+.fr label { display:block; font-size:10px; color:var(--t3); font-family:'DM Mono',monospace; letter-spacing:.08em; margin-bottom:5px; }
+.fr input,.fr select { width:100%; background:var(--s2); border:1px solid var(--border); border-radius:5px; color:var(--text); font-family:'DM Mono',monospace; font-size:13px; padding:9px 11px; }
+.fr input:focus,.fr select:focus { outline:none; border-color:var(--green); }
+.fr select option { background:var(--s2); }
+.mbtns { display:flex; gap:10px; margin-top:18px; justify-content:flex-end; }
+.bcnl { padding:8px 18px; border:1px solid var(--border); background:transparent; color:var(--t2); border-radius:5px; cursor:pointer; font-size:12px; }
+.bsav { padding:8px 18px; background:var(--green); border:none; color:#000; border-radius:5px; cursor:pointer; font-family:'DM Mono',monospace; font-size:12px; font-weight:500; }
+
+@media(max-width:580px){
+  th:nth-child(4),td:nth-child(4),
+  th:nth-child(5),td:nth-child(5) { display:none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- Header -->
+<div class="hdr">
+  <div>
+    <h1>WS 资产追踪</h1>
+    <div class="sub">ZHOU · JIE — WEALTHSIMPLE PORTFOLIO</div>
+  </div>
+  <button class="refresh-btn" id="refreshBtn" onclick="fetchAllPrices()">
+    <span id="refreshIcon">↻</span> 刷新价格
+  </button>
+</div>
+
+<!-- Live prices bar -->
+<div class="prices-bar" id="pricesBar">
+  <span style="font-size:11px;color:var(--t3)">价格载入中...</span>
+</div>
+
+<!-- Summary -->
+<div class="strip" id="strip"></div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <button class="tab on" data-t="ALL"  onclick="setTab('ALL')">全部</button>
+  <button class="tab"     data-t="ZHOU" onclick="setTab('ZHOU')">Zhou</button>
+  <button class="tab"     data-t="JIE"  onclick="setTab('JIE')">JIE</button>
+</div>
+
+<!-- Holdings -->
+<div class="box">
+  <div class="box-hdr">
+    <span>持仓明细</span>
+    <button class="add-btn" onclick="openModal()">+ 添加</button>
+  </div>
+  <div id="holdingsWrap"></div>
+</div>
+
+<!-- Snapshots -->
+<div class="box">
+  <div class="box-hdr"><span>收益快照（日 / 周 / 月 / 年）</span></div>
+  <div class="snap-grid" id="snapGrid"></div>
+  <div class="rec-bar">
+    <button class="rec-btn" onclick="recSnap()">📌 记录今日快照</button>
+    <span class="rec-note">记录后自动对比各时段收益变化</span>
+  </div>
+</div>
+
+<!-- History -->
+<div class="box">
+  <div class="box-hdr"><span>快照历史</span></div>
+  <div id="histWrap"></div>
+</div>
+
+</div>
+
+<!-- Modal -->
+<div class="ov" id="ov">
+  <div class="modal">
+    <h3>添加持仓</h3>
+    <div class="fr"><label>持有人</label>
+      <select id="f-who"><option value="ZHOU">Zhou</option><option value="JIE">JIE</option></select></div>
+    <div class="fr"><label>账户类型</label>
+      <select id="f-acct"><option value="TFSA">TFSA</option><option value="NR">Non-Registered</option></select></div>
+    <div class="fr"><label>股票代码（TSX格式，如 XEQT.TO）</label>
+      <input type="text" id="f-tkr" placeholder="XEQT.TO"></div>
+    <div class="fr"><label>显示名称</label>
+      <input type="text" id="f-name" placeholder="iShares Core Equity ETF"></div>
+    <div class="fr"><label>持有股数</label>
+      <input type="number" id="f-shares" placeholder="100" step="0.0001"></div>
+    <div class="fr"><label>平均成本价（CAD）</label>
+      <input type="number" id="f-cost" placeholder="42.00" step="0.01"></div>
+    <div class="mbtns">
+      <button class="bcnl" onclick="closeModal()">取消</button>
+      <button class="bsav" onclick="saveHolding()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Default holdings from screenshots ──────────────────────────
+const DEFAULT = [
+  // Zhou Non-Registered
+  {id:1, who:'ZHOU', acct:'NR',   tkr:'FBTC.TO', name:'Fidelity比特币ETF',      shares:155,       cost:47.30,  price:0},
+  {id:2, who:'ZHOU', acct:'NR',   tkr:'ZMMK.TO', name:'BMO货币市场ETF',          shares:550,       cost:49.90,  price:0},
+  {id:3, who:'ZHOU', acct:'NR',   tkr:'VDY.TO',  name:'Vanguard高息ETF',         shares:190,       cost:62.60,  price:0},
+  {id:4, who:'ZHOU', acct:'NR',   tkr:'XEQT.TO', name:'iShares全球股票ETF',      shares:1138,      cost:38.21,  price:0},
+  // Zhou TFSA
+  {id:5, who:'ZHOU', acct:'TFSA', tkr:'VDY.TO',  name:'Vanguard高息ETF',         shares:147.8226,  cost:52.03,  price:0},
+  {id:6, who:'ZHOU', acct:'TFSA', tkr:'XEQT.TO', name:'iShares全球股票ETF',      shares:760.067,   cost:39.84,  price:0},
+  // JIE TFSA
+  {id:7, who:'JIE',  acct:'TFSA', tkr:'XEQT.TO', name:'iShares全球股票ETF',      shares:385,       cost:36.92,  price:0},
+  {id:8, who:'JIE',  acct:'TFSA', tkr:'VDY.TO',  name:'Vanguard高息ETF',         shares:190,       cost:56.92,  price:0},
+  // JIE Non-Registered
+  {id:9,  who:'JIE', acct:'NR',   tkr:'XEQT.TO', name:'iShares全球股票ETF',      shares:1625,      cost:38.30,  price:0},
+  {id:10, who:'JIE', acct:'NR',   tkr:'VDY.TO',  name:'Vanguard高息ETF',         shares:260,       cost:64.82,  price:0},
+  {id:11, who:'JIE', acct:'NR',   tkr:'ZMMK.TO', name:'BMO货币市场ETF',          shares:600,       cost:49.92,  price:0},
+];
+
+let holdings  = JSON.parse(localStorage.getItem('ws_holdings')  || 'null') || DEFAULT;
+let snapshots = JSON.parse(localStorage.getItem('ws_snaps')     || '[]');
+let liveP     = JSON.parse(localStorage.getItem('ws_prices')    || '{}');
+let priceTs   = localStorage.getItem('ws_priceTs') || '';
+let curTab    = 'ALL';
+
+function save() {
+  localStorage.setItem('ws_holdings', JSON.stringify(holdings));
+  localStorage.setItem('ws_snaps',    JSON.stringify(snapshots));
+  localStorage.setItem('ws_prices',   JSON.stringify(liveP));
+  localStorage.setItem('ws_priceTs',  priceTs);
+}
+
+// ── Price fetching via Yahoo Finance proxy ─────────────────────
+async function fetchAllPrices() {
+  const tickers = [...new Set(holdings.map(h => h.tkr))];
+  const btn = document.getElementById('refreshBtn');
+  const icon = document.getElementById('refreshIcon');
+  btn.classList.add('loading');
+  icon.classList.add('spin');
+  icon.textContent = '↻';
+
+  let ok = 0;
+  for (const tkr of tickers) {
+    try {
+      // Yahoo Finance v8 via cors proxy
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(tkr)}?interval=1d&range=1d`;
+      const r = await fetch(url, {headers:{'Accept':'application/json'}});
+      if (!r.ok) throw new Error('HTTP '+r.status);
+      const d = await r.json();
+      const meta = d?.chart?.result?.[0]?.meta;
+      if (meta?.regularMarketPrice) {
+        liveP[tkr] = {
+          price: meta.regularMarketPrice,
+          prev:  meta.previousClose || meta.chartPreviousClose || meta.regularMarketPrice,
+          chgPct: ((meta.regularMarketPrice - (meta.previousClose||meta.regularMarketPrice))
+                   / (meta.previousClose||meta.regularMarketPrice) * 100),
+        };
+        ok++;
+      }
+    } catch(e) {
+      console.warn('Price fetch failed for', tkr, e);
+    }
+  }
+
+  priceTs = new Date().toLocaleString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  save();
+
+  btn.classList.remove('loading');
+  icon.classList.remove('spin');
+  icon.textContent = ok > 0 ? '✓' : '↻';
+  setTimeout(() => { icon.textContent = '↻'; }, 2000);
+
+  // Apply prices to holdings
+  holdings.forEach(h => {
+    if (liveP[h.tkr]?.price) h.price = liveP[h.tkr].price;
+  });
+  save();
+  renderAll();
+}
+
+// ── Calcs ──────────────────────────────────────────────────────
+function val(h)    { return h.shares * h.price; }
+function cost(h)   { return h.shares * h.cost; }
+function pnl(h)    { return val(h) - cost(h); }
+function pnlPct(h) { const c=cost(h); return c?pnl(h)/c*100:0; }
+function dayPnl(h) {
+  if (!liveP[h.tkr]) return 0;
+  return h.shares * (liveP[h.tkr].price - liveP[h.tkr].prev);
+}
+function dayPct(h) {
+  if (!liveP[h.tkr]) return 0;
+  return liveP[h.tkr].chgPct || 0;
+}
+
+function filtered() { return curTab==='ALL' ? holdings : holdings.filter(h=>h.who===curTab); }
+function totVal()   { return filtered().reduce((s,h)=>s+val(h),0); }
+function totPnl()   { return filtered().reduce((s,h)=>s+pnl(h),0); }
+function totCost()  { return filtered().reduce((s,h)=>s+cost(h),0); }
+function totDay()   { return filtered().reduce((s,h)=>s+dayPnl(h),0); }
+
+// ── Formatting ─────────────────────────────────────────────────
+const C = n => 'C$' + (Math.abs(n)>=1e6?(n/1e6).toFixed(2)+'M':Math.abs(n)>=1e3?(n/1e3).toFixed(1)+'K':n.toFixed(2));
+const S = n => (n>=0?'+':'')+C(n);
+const P = n => (n>=0?'+':'')+n.toFixed(2)+'%';
+const cls = n => n>0?'pos':n<0?'neg':'neu';
+
+// ── Render ─────────────────────────────────────────────────────
+function renderAll() {
+  renderPricesBar();
+  renderStrip();
+  renderHoldings();
+  renderSnaps();
+  renderHist();
+}
+
+function renderPricesBar() {
+  const tickers = [...new Set(holdings.map(h=>h.tkr))];
+  if (!Object.keys(liveP).length) {
+    document.getElementById('pricesBar').innerHTML = '<span style="font-size:11px;color:var(--t3)">点击"刷新价格"获取实时行情</span>';
+    return;
+  }
+  const items = tickers.map(tkr => {
+    const p = liveP[tkr];
+    if (!p) return '';
+    const display = tkr.replace('.TO','');
+    return `<div class="price-item">
+      <div class="pi-tkr">${display}</div>
+      <div class="pi-val">${C(p.price)}</div>
+      <div class="pi-chg ${cls(p.chgPct)}">${P(p.chgPct)}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('pricesBar').innerHTML =
+    items + `<span class="price-ts">更新 ${priceTs}</span>`;
+}
+
+function renderStrip() {
+  const accAll  = { label:'总资产', val:holdings.reduce((s,h)=>s+val(h),0),
+                    pnl:holdings.reduce((s,h)=>s+pnl(h),0),
+                    cost:holdings.reduce((s,h)=>s+cost(h),0),
+                    day:holdings.reduce((s,h)=>s+dayPnl(h),0), color:'var(--t2)' };
+  const zhou    = holdings.filter(h=>h.who==='ZHOU');
+  const jie     = holdings.filter(h=>h.who==='JIE');
+  const accZhou = { label:'Zhou', val:zhou.reduce((s,h)=>s+val(h),0),
+                    pnl:zhou.reduce((s,h)=>s+pnl(h),0), cost:zhou.reduce((s,h)=>s+cost(h),0),
+                    day:zhou.reduce((s,h)=>s+dayPnl(h),0), color:'var(--zhou)' };
+  const accJIE  = { label:'JIE',  val:jie.reduce((s,h)=>s+val(h),0),
+                    pnl:jie.reduce((s,h)=>s+pnl(h),0), cost:jie.reduce((s,h)=>s+cost(h),0),
+                    day:jie.reduce((s,h)=>s+dayPnl(h),0), color:'var(--jie)' };
+
+  document.getElementById('strip').innerHTML = [accAll,accZhou,accJIE].map(a => {
+    const pct = a.cost>0 ? a.pnl/a.cost*100 : 0;
+    return `<div class="card" style="--card-accent:${a.color}">
+      <div class="lbl">${a.label}</div>
+      <div class="val">${C(a.val)}</div>
+      <div class="chg ${cls(a.pnl)}">${S(a.pnl)} (${P(pct)})</div>
+      <div class="chg ${cls(a.day)}" style="font-size:10px;margin-top:2px">今日 ${S(a.day)}</div>
+    </div>`;
+  }).join('')
+  + `<div class="card" style="--card-accent:var(--gold)">
+      <div class="lbl">今日总变动</div>
+      <div class="val ${cls(holdings.reduce((s,h)=>s+dayPnl(h),0))}">${S(holdings.reduce((s,h)=>s+dayPnl(h),0))}</div>
+      <div class="chg" style="color:var(--t3);font-size:10px;margin-top:4px">${priceTs||'—'}</div>
+    </div>`;
+}
+
+function renderHoldings() {
+  const list = filtered();
+  if (!list.length) {
+    document.getElementById('holdingsWrap').innerHTML = '<div class="empty">暂无持仓</div>';
+    return;
+  }
+  const rows = list.map(h => {
+    const v = val(h), p = pnl(h), pp = pnlPct(h), dp = dayPnl(h), dpp = dayPct(h);
+    return `<tr>
+      <td>
+        <span class="tkr">${h.tkr.replace('.TO','')}</span>
+        <span class="badge b${h.who}">${h.who}</span>
+        <span class="badge b${h.acct}">${h.acct}</span>
+        <div class="tname">${h.name}</div>
+      </td>
+      <td><input class="ei" type="number" value="${h.shares}" step="0.0001"
+          onchange="upd(${h.id},'shares',this.value)"></td>
+      <td><input class="ei" type="number" value="${h.cost}" step="0.01"
+          onchange="upd(${h.id},'cost',this.value)"></td>
+      <td>${h.price>0?C(h.price):'—'}</td>
+      <td>${C(v)}</td>
+      <td class="${cls(p)}">${S(p)}<br><span style="font-size:10px">${P(pp)}</span></td>
+      <td class="${cls(dp)}">${dp!==0?S(dp):'—'}<br><span style="font-size:10px">${dpp!==0?P(dpp):'—'}</span></td>
+      <td><button class="delbtn" onclick="del(${h.id})">✕</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('holdingsWrap').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>标的</th><th>股数</th><th>成本价</th>
+        <th>现价</th><th>市值</th><th>总盈亏</th><th>今日盈亏</th><th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderSnaps() {
+  const now = totVal();
+  const periods = [
+    {label:'今日', days:1},
+    {label:'本周', days:7},
+    {label:'本月', days:30},
+    {label:'今年', days:365},
+  ];
+  document.getElementById('snapGrid').innerHTML = periods.map(p => {
+    const cut = new Date(); cut.setDate(cut.getDate()-p.days);
+    const snap = [...snapshots]
+      .filter(s => (curTab==='ALL'||s.tab===curTab) && new Date(s.date)<=cut)
+      .sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+    let body;
+    if (snap) {
+      const d = now - snap.val;
+      const pct = snap.val>0 ? d/snap.val*100 : 0;
+      body = `<div class="sv ${cls(d)}">${S(d)}</div><div class="spct ${cls(d)}">${P(pct)}</div>`;
+    } else {
+      body = `<div class="sv" style="color:var(--t3);font-size:12px">无快照</div><div class="spct" style="color:var(--t3)">记录后显示</div>`;
+    }
+    return `<div class="sc"><div class="sp">${p.label}</div>${body}</div>`;
+  }).join('');
+}
+
+function renderHist() {
+  const list = [...snapshots]
+    .filter(s=>curTab==='ALL'||s.tab===curTab)
+    .sort((a,b)=>new Date(b.date)-new Date(a.date))
+    .slice(0,30);
+  if (!list.length) {
+    document.getElementById('histWrap').innerHTML = '<div class="empty">暂无历史快照</div>';
+    return;
+  }
+  const rows = list.map(s => `<tr>
+    <td>${s.date}</td>
+    <td class="pos">${C(s.val)}</td>
+    <td style="color:var(--t3)">${s.tab}</td>
+    <td style="color:var(--t3)">${s.note||''}</td>
+    <td><button class="delbtn" onclick="delSnap('${s.id}')">✕</button></td>
+  </tr>`).join('');
+  document.getElementById('histWrap').innerHTML = `
+    <table>
+      <thead><tr><th>日期</th><th>总值</th><th>账户</th><th>备注</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Actions ────────────────────────────────────────────────────
+function setTab(t) {
+  curTab = t;
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  renderAll();
+}
+
+function upd(id,field,v) {
+  const h=holdings.find(h=>h.id===id);
+  if(h){ h[field]=parseFloat(v)||0; save(); renderAll(); }
+}
+
+function del(id) {
+  if(!confirm('确认删除此持仓？')) return;
+  holdings=holdings.filter(h=>h.id!==id); save(); renderAll();
+}
+
+function recSnap() {
+  const note = prompt('备注（可空）','') ?? '';
+  snapshots.push({ id:Date.now().toString(), date:new Date().toISOString().split('T')[0],
+                   tab:curTab, val:totVal(), note });
+  save(); renderAll();
+}
+
+function delSnap(id) { snapshots=snapshots.filter(s=>s.id!==id); save(); renderAll(); }
+
+function openModal()  { document.getElementById('ov').classList.add('show'); }
+function closeModal() { document.getElementById('ov').classList.remove('show'); }
+
+function saveHolding() {
+  const tkr = document.getElementById('f-tkr').value.toUpperCase().trim();
+  if (!tkr) return alert('请输入股票代码');
+  holdings.push({
+    id: Date.now(),
+    who:    document.getElementById('f-who').value,
+    acct:   document.getElementById('f-acct').value,
+    tkr,
+    name:   document.getElementById('f-name').value.trim(),
+    shares: parseFloat(document.getElementById('f-shares').value)||0,
+    cost:   parseFloat(document.getElementById('f-cost').value)||0,
+    price:  liveP[tkr]?.price || 0,
+  });
+  save(); closeModal(); renderAll();
+  fetchAllPrices(); // auto-fetch price for new ticker
+}
+
+// ── Init ───────────────────────────────────────────────────────
+// Apply cached prices to holdings on load
+holdings.forEach(h => { if(liveP[h.tkr]?.price) h.price=liveP[h.tkr].price; });
+renderAll();
+// Auto-fetch on load if prices are stale (>15min)
+if (!priceTs || (Date.now() - new Date(localStorage.getItem('ws_priceTs')||0)) > 900000) {
+  fetchAllPrices();
+}
+</script>
+</body>
+</html>
